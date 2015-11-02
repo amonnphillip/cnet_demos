@@ -1,0 +1,21 @@
+{
+  "name": "frontier-digital-voice",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Frontier FiOS Digital Voice Service",
+  "repository": "",
+  "license": "",
+  "devDependencies": {
+    "grunt": "~0.4.5",
+    "grunt-connect-proxy": "^0.2.0",
+    "grunt-contrib-connect": "^0.11.2",
+    "grunt-contrib-watch": "~0.6.1",
+    "grunt-rev": "~0.1.0",
+    "http-server": "^0.6.1",
+    "load-grunt-tasks": "^3.3.0",
+    "shelljs": "^0.2.6",
+    "time-grunt": "^1.2.1"
+  },
+  "scripts": {
+  }
+}
