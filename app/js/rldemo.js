@@ -86,7 +86,38 @@
       this.H = canvas.height;
       
       this.clock = 0;
-      
+
+      // set up the maze
+      this.maze = [
+        [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+        [1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        [1, 0, 1, 1, 0, 1, 1, 1, 0, 1],
+        [1, 0, 1, 0, 0, 0, 0, 1, 0, 1],
+        [1, 0, 1, 0, 1, 1, 0, 0, 0, 1],
+        [1, 0, 0, 0, 1, 1, 0, 1, 0, 1],
+        [1, 0, 1, 0, 0, 0, 0, 1, 0, 1],
+        [1, 0, 1, 1, 1, 0, 1, 1, 0, 1],
+        [1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+      ];
+
+      this.maze.goal = {
+        x: 8,
+        y: 8
+      };
+
+      this.maze.dimentions = {
+        w: 10,
+        h: 10
+      };
+
+      this.maze.start = {
+        x: 1,
+        y: 1
+      };
+
+
+/*
       // set up walls in the world
       this.walls = []; 
       var pad = 10;
@@ -105,9 +136,11 @@
         var it = new Item(x, y, t);
         this.items.push(it);
       }
+      */
     }
     
-    World.prototype = {      
+    World.prototype = {
+      /*
       // helper function to get closest colliding walls/items
       stuff_collide_: function(p1, p2, check_walls, check_items) {
         var minres = false;
@@ -147,10 +180,47 @@
         
         return minres;
       },
+      */
       tick: function() {
         // tick the environment
         this.clock++;
-        
+
+        // let the agents behave in the world based on their input
+        for(var i=0,n=this.agents.length;i<n;i++) {
+          this.agents[i].forward();
+        }
+
+        // Inc steps
+        for(var i=0,n=this.agents.length;i<n;i++) {
+          this.agents[i].steps ++;
+        }
+
+        // move agent(s)
+        for(var i=0,n=this.agents.length;i<n;i++) {
+          if (w.maze[this.agents[i].p.y + this.agents[i].action[1]][this.agents[i].p.x + this.agents[i].action[0]] === 0) {
+            this.agents[i].p.x += this.agents[i].action[0];
+            this.agents[i].p.y += this.agents[i].action[1];
+            this.agents[i].pathMap[this.agents[i].p.y][this.agents[i].p.x] ++;
+          }
+        }
+
+
+        // agents are given the opportunity to learn based on feedback of their action on environment
+        for(var i=0,n=this.agents.length;i<n;i++) {
+          this.agents[i].backward();
+        }
+
+        // Check if the agent(s) have reached the goal and reset it/them
+        for(var i=0,n=this.agents.length;i<n;i++) {
+          if (this.agents[i].p.x === w.maze.goal.x &&
+            this.agents[i].p.y === w.maze.goal.y) {
+            this.agents[i].p.x = w.maze.start.x;
+            this.agents[i].p.y = w.maze.start.y;
+            this.agents[i].steps = 0;
+          }
+        }
+
+        /*
         // fix input to all agents based on environment
         // process eyes
         this.collpoints = [];
@@ -263,11 +333,11 @@
           var newit = new Item(newitx, newity, newitt);
           this.items.push(newit);
         }
-        
+
         // agents are given the opportunity to learn based on feedback of their action on environment
         for(var i=0,n=this.agents.length;i<n;i++) {
           this.agents[i].backward();
-        }
+        }*/
       }
     }
     
@@ -283,17 +353,27 @@
     var Agent = function() {
     
       // positional information
-      this.p = new Vec(50, 50);
+      this.p = new Vec(1, 1);
       this.op = this.p; // old position
       this.angle = 0; // direction facing
+
+      this.steps = 0;
       
       this.actions = [];
+      this.actions.push([0,1]);
+      this.actions.push([0,-1]);
+      this.actions.push([1,0]);
+      this.actions.push([-1,0]);
+
+      this.pathMap;
+/*
       this.actions.push([1,1]);
       this.actions.push([0.8,1]);
       this.actions.push([1,0.8]);
       this.actions.push([0.5,0]);
       this.actions.push([0,0.5]);
-      
+
+      */
       // properties
       this.rad = 10;
       this.eyes = [];
@@ -315,8 +395,75 @@
       this.prevactionix = -1;
     }
     Agent.prototype = {
+      createPathMap: function() {
+        this.pathMap = new Array(w.maze.dimentions.w);
+        for (var index = 0;index < w.maze.dimentions.w;index ++) {
+          this.pathMap[index] = new Array(w.maze.dimentions.h);
+        }
+
+        for (var y = 0;y < w.maze.dimentions.w; y ++) {
+          for (var x = 0;x < w.maze.dimentions.h; x ++) {
+            this.pathMap[y][x] = 0;
+          }
+        }
+      },
       forward: function() {
         // in forward pass the agent simply behaves in the environment
+        if (typeof this.pathMap === 'undefined') {
+          this.createPathMap();
+        }
+
+        var input_array = new Array((10 * 10) + 2 + 1);
+        // inputs are the maze in its current state
+        var index = 0;
+        for (var y = 0;y < 10; y ++) {
+          for (var x = 0;x < 10; x ++) {
+            input_array[index] = w.maze[y][x];
+            index ++;
+          }
+        }
+
+        // directions that are clear
+        input_array[index] = 1;
+        input_array[index + 1] = 1;
+        input_array[index + 2] = 1;
+        input_array[index + 3] = 1;
+        if (w.maze[this.p.y - 1][this.p.x] === 1) { // can agent go up
+          input_array[index] = 0;
+        }
+        if (w.maze[this.p.y + 1][this.p.x] === 1) { // can agent go down
+          input_array[index + 1] = 0;
+        }
+        if (w.maze[this.p.y][this.p.x + 1] === 1) { // can agent go left
+          input_array[index + 2] = 0;
+        }
+        if (w.maze[this.p.y][this.p.x - 1] === 1) { // can agent go right
+          input_array[index + 3] = 0;
+        }
+        index += 4;
+
+        // agent position
+        input_array[index] = this.p.x / 10;
+        index ++;
+        input_array[index] = this.p.y / 10;
+        index ++;
+
+        // how close the agent is to the goal
+        var v = new Vec(this.p.x, this.p.y);
+        var dist = v.dist_from(new Vec(w.maze.goal.x, w.maze.goal.y));
+        input_array[index] = dist / 10;
+        index ++;
+
+        // goal vector
+        var v = new Vec(this.p.x, this.p.y);
+        v = v.sub(new Vec(w.maze.goal.x, w.maze.goal.y));
+        v.normalize();
+        input_array[index] = (1 + v.x) / 2;
+        index ++;
+        input_array[index] = (1 + v.y) / 2;
+        index ++;
+
+/*
         // create input to brain
         var num_eyes = this.eyes.length;
         var input_array = new Array(num_eyes * 3);
@@ -330,22 +477,50 @@
             // lets do a 1-of-k encoding into the input array
             input_array[i*3 + e.sensed_type] = e.sensed_proximity/e.max_range; // normalize to [0,1]
           }
-        }
+        }*/
         
         // get action from brain
         var actionix = this.brain.forward(input_array);
-        var action = this.actions[actionix];
+        this.action = this.actions[actionix];
         this.actionix = actionix; //back this up
-        
+
+
+        /*
         // demultiplex into behavior variables
         this.rot1 = action[0]*1;
         this.rot2 = action[1]*1;
-        
-        //this.rot1 = 0;
-        //this.rot2 = 0;
+*/
       },
       backward: function() {
         // in backward pass agent learns.
+        var v = new Vec(this.p.x, this.p.y);
+        var dist = v.dist_from(new Vec(w.maze.goal.x, w.maze.goal.y));
+        var proximity_reward = Math.abs((dist/10) - 1);
+        var num_steps_reward = this.steps / 1000;
+        if (num_steps_reward > 0.7) {
+          num_steps_reward = 0.7;
+        }
+
+        var reward = proximity_reward - num_steps_reward;
+
+        // punish for trying to walk into walls
+        if (w.maze[this.p.y + this.action[1]][this.p.x + this.action[0]] === 1) {
+          reward /= 2;
+        }
+
+        // punish for trying walk over previous path
+        if (this.pathMap[this.p.y + this.action[1]][this.p.x + this.action[0]] > 0) {
+          reward /= 2;
+        }
+
+        // reward for hitting goal
+        if (this.p.x === w.maze.goal.x &&
+          this.p.y === w.maze.goal.y) {
+          reward = 1;
+          this.createPathMap();
+        }
+
+        /*
         // compute reward 
         var proximity_reward = 0.0;
         var num_eyes = this.eyes.length;
@@ -366,7 +541,8 @@
         this.digestion_signal = 0.0;
         
         var reward = proximity_reward + forward_reward + digestion_reward;
-        
+        */
+
         // pass to brain for learning
         this.brain.backward(reward);
       }
@@ -378,7 +554,7 @@
       } else {
         if(w.clock % 50 !== 0) return;  // do this sparingly
       }
-      
+
       var canvas = document.getElementById("net_canvas");
       var ctx = canvas.getContext("2d");
       var W = canvas.width;
@@ -438,68 +614,103 @@
         reward_graph.drawSelf(gcanvas);
       }
     }
-    
+
     // Draw everything
-    function draw() {  
+    function draw() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.lineWidth = 1;
-      var agents = w.agents;
-      
-      // draw walls in environment
-      ctx.strokeStyle = "rgb(0,0,0)";
-      ctx.beginPath();
-      for(var i=0,n=w.walls.length;i<n;i++) {
-        var q = w.walls[i];
-        ctx.moveTo(q.p1.x, q.p1.y);
-        ctx.lineTo(q.p2.x, q.p2.y);
-      }
-      ctx.stroke();
-  
-      // draw agents
-      // color agent based on reward it is experiencing at the moment
-      var r = Math.floor(agents[0].brain.latest_reward * 200);
-      if(r>255)r=255;if(r<0)r=0;
-      ctx.fillStyle = "rgb(" + r + ", 150, 150)";
-      ctx.strokeStyle = "rgb(0,0,0)";
-      for(var i=0,n=agents.length;i<n;i++) {
-        var a = agents[i];
-        
-        // draw agents body
-        ctx.beginPath();
-        ctx.arc(a.op.x, a.op.y, a.rad, 0, Math.PI*2, true); 
-        ctx.fill();
-        ctx.stroke();
-        
-        // draw agents sight
-        for(var ei=0,ne=a.eyes.length;ei<ne;ei++) {
-          var e = a.eyes[ei];
-          var sr = e.sensed_proximity;
-          if(e.sensed_type === -1 || e.sensed_type === 0) { 
-            ctx.strokeStyle = "rgb(0,0,0)"; // wall or nothing
+
+      var bw = canvas.width / 10;
+      var bh = canvas.height / 10;
+
+      for (var y = 0;y < 10; y ++) {
+        for (var x = 0;x < 10; x ++) {
+          if (w.maze[y][x] === 1) {
+            ctx.fillStyle="#000000";
+            ctx.fillRect(x * bw, y * bh,  bw, bh);
           }
-          if(e.sensed_type === 1) { ctx.strokeStyle = "rgb(255,150,150)"; } // apples
-          if(e.sensed_type === 2) { ctx.strokeStyle = "rgb(150,255,150)"; } // poison
-          ctx.beginPath();
-          ctx.moveTo(a.op.x, a.op.y);
-          ctx.lineTo(a.op.x + sr * Math.sin(a.oangle + e.angle),
-                     a.op.y + sr * Math.cos(a.oangle + e.angle));
-          ctx.stroke();
+
+          if (w.agents[0].pathMap[y][x] > 1) {
+            var col = 255 - (w.agents[0].pathMap[y][x] * 3);
+            if (col > 128) {
+              col = 128
+            };
+
+            ctx.fillStyle="#999999";
+            ctx.fillRect(x * bw, y * bh,  bw, bh);
+          }
         }
       }
-      
-      // draw items
-      ctx.strokeStyle = "rgb(0,0,0)";
-      for(var i=0,n=w.items.length;i<n;i++) {
-        var it = w.items[i];
-        if(it.type === 1) ctx.fillStyle = "rgb(255, 150, 150)";
-        if(it.type === 2) ctx.fillStyle = "rgb(150, 255, 150)";
-        ctx.beginPath();
-        ctx.arc(it.p.x, it.p.y, it.rad, 0, Math.PI*2, true); 
-        ctx.fill();
-        ctx.stroke();
-      }
-      
+
+      ctx.fillStyle="#FF0000";
+      ctx.fillRect(w.agents[0].p.x * bw, w.agents[0].p.y * bh, bw, bh);
+
+      ctx.fillStyle="#006600";
+      ctx.fillRect(w.maze.goal.x * bw, w.maze.goal.y * bh, bw, bh);
+
+
       w.agents[0].brain.visSelf(document.getElementById('brain_info_div'));
+
+      /*
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.lineWidth = 1;
+            var agents = w.agents;
+
+            // draw walls in environment
+            ctx.strokeStyle = "rgb(0,0,0)";
+            ctx.beginPath();
+            for(var i=0,n=w.walls.length;i<n;i++) {
+              var q = w.walls[i];
+              ctx.moveTo(q.p1.x, q.p1.y);
+              ctx.lineTo(q.p2.x, q.p2.y);
+            }
+            ctx.stroke();
+
+            // draw agents
+            // color agent based on reward it is experiencing at the moment
+            var r = Math.floor(agents[0].brain.latest_reward * 200);
+            if(r>255)r=255;if(r<0)r=0;
+            ctx.fillStyle = "rgb(" + r + ", 150, 150)";
+            ctx.strokeStyle = "rgb(0,0,0)";
+            for(var i=0,n=agents.length;i<n;i++) {
+              var a = agents[i];
+
+              // draw agents body
+              ctx.beginPath();
+              ctx.arc(a.op.x, a.op.y, a.rad, 0, Math.PI*2, true);
+              ctx.fill();
+              ctx.stroke();
+
+              // draw agents sight
+              for(var ei=0,ne=a.eyes.length;ei<ne;ei++) {
+                var e = a.eyes[ei];
+                var sr = e.sensed_proximity;
+                if(e.sensed_type === -1 || e.sensed_type === 0) {
+                  ctx.strokeStyle = "rgb(0,0,0)"; // wall or nothing
+                }
+                if(e.sensed_type === 1) { ctx.strokeStyle = "rgb(255,150,150)"; } // apples
+                if(e.sensed_type === 2) { ctx.strokeStyle = "rgb(150,255,150)"; } // poison
+                ctx.beginPath();
+                ctx.moveTo(a.op.x, a.op.y);
+                ctx.lineTo(a.op.x + sr * Math.sin(a.oangle + e.angle),
+                           a.op.y + sr * Math.cos(a.oangle + e.angle));
+                ctx.stroke();
+              }
+            }
+
+            // draw items
+            ctx.strokeStyle = "rgb(0,0,0)";
+            for(var i=0,n=w.items.length;i<n;i++) {
+              var it = w.items[i];
+              if(it.type === 1) ctx.fillStyle = "rgb(255, 150, 150)";
+              if(it.type === 2) ctx.fillStyle = "rgb(150, 255, 150)";
+              ctx.beginPath();
+              ctx.arc(it.p.x, it.p.y, it.rad, 0, Math.PI*2, true);
+              ctx.fill();
+              ctx.stroke();
+            }
+
+            w.agents[0].brain.visSelf(document.getElementById('brain_info_div'));
+            */
     }
     
     // Tick the world
