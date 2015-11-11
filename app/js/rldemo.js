@@ -1,4 +1,5 @@
-  var canvas, ctx;
+
+var canvas, ctx;
     
     // A 2D vector utility
     var Vec = function(x, y) {
@@ -204,19 +205,30 @@
           }
         }
 
-
         // agents are given the opportunity to learn based on feedback of their action on environment
+        // TODO: Need time based feedback... MDP
         for(var i=0,n=this.agents.length;i<n;i++) {
           this.agents[i].backward();
         }
 
-        // Check if the agent(s) have reached the goal and reset it/them
+        // Check if the agent(s) have reached the goal and reset it
         for(var i=0,n=this.agents.length;i<n;i++) {
           if (this.agents[i].p.x === w.maze.goal.x &&
             this.agents[i].p.y === w.maze.goal.y) {
+
+            console.log('Hit goal:');
+            console.log('steps: ' + this.agents[i].steps + ' wall hits: ' + this.agents[i].wallRuninsCount + ' oversteps: ' + this.agents[i].walkBackCount);
+
             this.agents[i].p.x = w.maze.start.x;
             this.agents[i].p.y = w.maze.start.y;
             this.agents[i].steps = 0;
+            this.agents[i].wallRuninsCount = 0;
+            this.agents[i].walkBackCount = 0;
+
+            this.agents[i].wallCollideReward = 0;
+            this.agents[i].wallOverReward = 0;
+            this.agents[i].stepsReward = 0;
+            this.agents[i].distanceReward = 0;
           }
         }
 
@@ -340,14 +352,14 @@
         }*/
       }
     }
-    
+    /*
     // Eye sensor has a maximum range and senses walls
     var Eye = function(angle) {
       this.angle = angle; // angle relative to agent its on
       this.max_range = 85;
       this.sensed_proximity = 85; // what the eye is seeing. will be set in world.tick()
       this.sensed_type = -1; // what does the eye see?
-    }
+    }*/
     
     // A single agent
     var Agent = function() {
@@ -357,8 +369,18 @@
       this.op = this.p; // old position
       this.angle = 0; // direction facing
 
+      this.wallRuninsCount = 0;
+      this.walkBackCount = 0;
       this.steps = 0;
-      
+      this.goalDist = 0;
+      this.goalVectorx = 0;
+      this.goalVectory = 0;
+      this.wallCollideReward = 0;
+      this.wallOverReward = 0;
+      this.stepsReward = 0;
+      this.distanceReward = 0;
+      this.reward = 0;
+
       this.actions = [];
       this.actions.push([0,1]);
       this.actions.push([0,-1]);
@@ -376,14 +398,49 @@
       */
       // properties
       this.rad = 10;
-      this.eyes = [];
-      for(var k=0;k<9;k++) { this.eyes.push(new Eye((k-3)*0.25)); }
+      //this.eyes = [];
+      //for(var k=0;k<9;k++) { this.eyes.push(new Eye((k-3)*0.25)); }
       
       // braaain
       //this.brain = new deepqlearn.Brain(this.eyes.length * 3, this.actions.length);
-      var spec = document.getElementById('qspec').value;
-      eval(spec);
-      this.brain = brain;
+      //var spec = document.getElementById('qspec').value;
+     // eval(spec);
+
+
+      //var num_inputs = (10 * 10) + 4 + 4 + 2 + 1 + 2; // maze, open directions, positions agent has been to, agent position, distance from reward, reward vector
+      var num_inputs = (10 * 10) + 4 + 4 + 1; // maze state, open directions, distance from reward
+      var num_actions = 4;
+      var temporal_window = 1; // amount of temporal memory. 0 = agent lives in-the-moment :)
+      var network_size = num_inputs*temporal_window + num_actions*temporal_window + num_inputs;
+
+// the value function network computes a value of taking any of the possible actions
+// given an input state. Here we specify one explicitly the hard way
+// but user could also equivalently instead use opt.hidden_layer_sizes = [20,20]
+// to just insert simple relu hidden layers.
+      var layer_defs = [];
+      layer_defs.push({type:'input', out_sx:1, out_sy:1, out_depth:network_size});
+      layer_defs.push({type:'fc', num_neurons: 100, activation:'relu'});
+      layer_defs.push({type:'fc', num_neurons: 100, activation:'relu'});
+      layer_defs.push({type:'regression', num_neurons:num_actions});
+
+// options for the Temporal Difference learner that trains the above net
+// by backpropping the temporal difference learning rule.
+      var tdtrainer_options = {learning_rate:0.001, momentum:0.0, batch_size:64, l2_decay:0.01};
+
+      var opt = {};
+      opt.temporal_window = temporal_window;
+      opt.experience_size = 30000;
+      opt.start_learn_threshold = 1000;
+      opt.gamma = 0.7;
+      opt.learning_steps_total = 200000;
+      opt.learning_steps_burnin = 3000;
+      opt.epsilon_min = 0.05;
+      opt.epsilon_test_time = 0.05;
+      opt.layer_defs = layer_defs;
+      opt.tdtrainer_options = tdtrainer_options;
+
+
+      this.brain = new deepqlearn.Brain(num_inputs, num_actions, opt); // woohoo;
       
       this.reward_bonus = 0.0;
       this.digestion_signal = 0.0;
@@ -413,15 +470,54 @@
           this.createPathMap();
         }
 
-        var input_array = new Array((10 * 10) + 2 + 1);
+        var calcPathMapResistance = function(x, y) {
+          var p = this.pathMap[y][x];
+          if (p > 10) {
+            p = 10;
+          }
+
+          return p / 10;
+        }.bind(this);
+
+        var input_array = new Array((10 * 10) + 4 + 4 + 1);
         // inputs are the maze in its current state
         var index = 0;
         for (var y = 0;y < 10; y ++) {
           for (var x = 0;x < 10; x ++) {
-            input_array[index] = w.maze[y][x];
+            if (w.maze[y][x] !== 0) {
+              input_array[index] = w.maze[y][x];
+            } else {
+              var p = this.pathMap[y][x];
+              if (p > 10) {
+                p = 8;
+              }
+
+              input_array[index] = calcPathMapResistance(x, y);
+            }
+
+            if (y === this.p.y && x === this.p.x) {
+              input_array[index] = 1;
+            }
+
             index ++;
           }
         }
+/*
+        for (var y = 0;y < 10; y ++) {
+          for (var x = 0;x < 10; x ++) {
+            if (y === this.p.y && x === this.p.x) {
+              input_array[index] = 1;
+            }
+            index ++;
+          }
+        }*/
+/*
+        for (var y = 0;y < 10; y ++) {
+          for (var x = 0;x < 10; x ++) {
+            input_array[index] = this.pathMap[y][x];
+            index ++;
+          }
+        }*/
 
         // directions that are clear
         input_array[index] = 1;
@@ -442,18 +538,27 @@
         }
         index += 4;
 
+        // directions that agent has been to
+        input_array[index] = calcPathMapResistance(this.p.y - 1, this.p.x);
+        input_array[index + 1] = calcPathMapResistance(this.p.y + 1, this.p.x);
+        input_array[index + 2] = calcPathMapResistance(this.p.y, this.p.x + 1);
+        input_array[index + 3] = calcPathMapResistance(this.p.y, this.p.x - 1);
+        index += 4;
+/*
         // agent position
         input_array[index] = this.p.x / 10;
         index ++;
         input_array[index] = this.p.y / 10;
         index ++;
-
+*/
         // how close the agent is to the goal
         var v = new Vec(this.p.x, this.p.y);
         var dist = v.dist_from(new Vec(w.maze.goal.x, w.maze.goal.y));
         input_array[index] = dist / 10;
         index ++;
+        w.agents[0].goalDist = dist / 10;
 
+        /*
         // goal vector
         var v = new Vec(this.p.x, this.p.y);
         v = v.sub(new Vec(w.maze.goal.x, w.maze.goal.y));
@@ -462,6 +567,10 @@
         index ++;
         input_array[index] = (1 + v.y) / 2;
         index ++;
+
+        w.agents[0].goalVectorx = (1 + v.x) / 2;
+        w.agents[0].goalVectory = (1 + v.y) / 2;
+*/
 
 /*
         // create input to brain
@@ -493,31 +602,79 @@
       },
       backward: function() {
         // in backward pass agent learns.
+
+        // TODO: This is the state value function!!
+
+        // TODO: Need to display the result of this value in UI
+
+        // TODO: Wonder if this can be trained too?
+
+        var maxWallCollideReward = 0.3;
+        var maxWallCollideRatioReward = 0.2
+        var maxWalkOverReward = 0.1;
+        var maxStepsReward = 0.2;
+        var maxDistanceReward = 0.2;
+        var maxCloserToGoalReward = 0.2;
+
+        var wallCollideReward = 0;
+        var wallCollideRatioReward = 0;
+        var wallOverReward = 0;
+        var stepsReward = 0;
+        var distanceReward = 0;
+        var closerToGoal = 0;
+
+        //
+
         var v = new Vec(this.p.x, this.p.y);
         var dist = v.dist_from(new Vec(w.maze.goal.x, w.maze.goal.y));
-        var proximity_reward = Math.abs((dist/10) - 1);
-        var num_steps_reward = this.steps / 1000;
-        if (num_steps_reward > 0.7) {
-          num_steps_reward = 0.7;
-        }
+        var distanceReward = Math.abs((dist/10) - 1) * maxDistanceReward;
 
-        var reward = proximity_reward - num_steps_reward;
+        var minStepsForMaze = 20;
+        var maxSteps = 200;
+        if (this.steps < minStepsForMaze) {
+          stepsReward = maxStepsReward;
+        } else {
+          stepsReward = maxStepsReward - ((maxStepsReward / maxSteps) * this.steps);
+          if (stepsReward < 0) {
+            stepsReward = 0;
+          }
+        }
 
         // punish for trying to walk into walls
         if (w.maze[this.p.y + this.action[1]][this.p.x + this.action[0]] === 1) {
-          reward /= 2;
+          wallCollideReward = 0;
+          w.agents[0].wallRuninsCount ++;
+        } else {
+          wallCollideReward = maxWallCollideReward;
+        }
+
+        if (w.agents[0].wallRuninsCount === 0) {
+          wallCollideRatioReward = maxWallCollideRatioReward;
+        } else {
+          wallCollideRatioReward = maxWallCollideRatioReward / w.agents[0].wallRuninsCount;
         }
 
         // punish for trying walk over previous path
         if (this.pathMap[this.p.y + this.action[1]][this.p.x + this.action[0]] > 0) {
-          reward /= 2;
+          wallOverReward = 0;
+          w.agents[0].walkBackCount ++;
+        } else {
+          wallOverReward = maxWalkOverReward;
         }
+
+        // reward for being closer to the goal
+        if (w.agents[0].distanceReward < distanceReward) {
+          closerToGoal = maxCloserToGoalReward;
+        }
+
 
         // reward for hitting goal
         if (this.p.x === w.maze.goal.x &&
           this.p.y === w.maze.goal.y) {
-          reward = 1;
+          //reward = 1;
           this.createPathMap();
+
+          // TODO: Need to do somthing with the learning here
         }
 
         /*
@@ -543,12 +700,27 @@
         var reward = proximity_reward + forward_reward + digestion_reward;
         */
 
+        var reward = wallCollideReward + wallOverReward + stepsReward + distanceReward + wallCollideRatioReward + closerToGoal;
+
+        if (reward > 1) {
+          reward = 1;
+        }
+
+        w.agents[0].wallCollideReward = wallCollideReward;
+        w.agents[0].wallOverReward = wallOverReward;
+        w.agents[0].stepsReward = stepsReward;
+        w.agents[0].distanceReward = distanceReward;
+        w.agents[0].reward = reward;
+
         // pass to brain for learning
         this.brain.backward(reward);
       }
     }
     
     function draw_net() {
+      var neuronSize = 3;
+
+
       if(simspeed <=1) {
         // we will always draw at these speeds
       } else {
@@ -560,10 +732,17 @@
       var W = canvas.width;
       var H = canvas.height;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      var layerDisplayWidth = w.agents[0].brain.value_net.layers / (canvas.width - 20);
+
+
       var L = w.agents[0].brain.value_net.layers;
-      var dx = (W - 50)/L.length;
+      //var dx = (W - layerDisplayWidth)/L.length;
       var x = 10;
       var y = 40;
+
+
+
       ctx.font="12px Verdana";
       ctx.fillStyle = "rgb(0,0,0)";
       ctx.fillText("Value Function Approximating Neural Network:", 10, 14);
@@ -578,9 +757,9 @@
           var v = Math.floor(kw[q]*100);
           if(v >= 0) ctx.fillStyle = "rgb(0,0," + v + ")";
           if(v < 0) ctx.fillStyle = "rgb(" + (-v) + ",0,0)";
-          ctx.fillRect(x,y,10,10);
-          y += 12;
-          if(y>H-25) { y = 40; x += 12};
+          ctx.fillRect(x , y, neuronSize, neuronSize);
+          y += neuronSize;
+          if(y>H-25) { y = 40; x += neuronSize};
         }
         x += 50;
         y = 40;
@@ -647,6 +826,18 @@
       ctx.fillStyle="#006600";
       ctx.fillRect(w.maze.goal.x * bw, w.maze.goal.y * bh, bw, bh);
 
+      ctx_metrics.clearRect(0, 0, canvas_metrics.width, canvas_metrics.height);
+      ctx_metrics.font="12px Verdana";
+      ctx_metrics.fillStyle = "rgb(0,0,0)";
+      ctx_metrics.fillText("steps = " + w.agents[0].steps, 10, 14);
+      ctx_metrics.fillText("wall hits = " + w.agents[0].wallRuninsCount, 10, 24);
+      ctx_metrics.fillText("back walks = " + w.agents[0].walkBackCount, 10, 34);
+      ctx_metrics.fillText("dist = " + w.agents[0].goalDist, 150, 14);
+      ctx_metrics.fillText("vectorx = " + w.agents[0].goalVectorx, 150, 24);
+      ctx_metrics.fillText("vectory = " + w.agents[0].goalVectory, 150, 34);
+
+      ctx_metrics.fillText("rewards = " + w.agents[0].reward, 10, 44);
+      ctx_metrics.fillText("cl: " + w.agents[0].wallCollideReward + ' wo: ' + w.agents[0].wallOverReward + 'st: ' + w.agents[0].stepsReward + ' ds: ' +  w.agents[0].distanceReward, 10, 54);
 
       w.agents[0].brain.visSelf(document.getElementById('brain_info_div'));
 
@@ -716,7 +907,7 @@
     // Tick the world
     function tick() {
       w.tick();
-      if(!skipdraw || w.clock % 50 === 0) {
+      if(w.clock % 5 === 0) {
         draw();
         draw_stats();
         draw_net();
@@ -781,7 +972,9 @@
     function start() {
       canvas = document.getElementById("canvas");
       ctx = canvas.getContext("2d");
-      
+      canvas_metrics = document.getElementById("metrics_canvas");
+      ctx_metrics = canvas_metrics.getContext("2d");
+
       w = new World();
       w.agents = [new Agent()];
       
