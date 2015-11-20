@@ -408,7 +408,7 @@ var canvas, ctx;
 
 
       //var num_inputs = (10 * 10) + 4 + 4 + 2 + 1 + 2; // maze, open directions, positions agent has been to, agent position, distance from reward, reward vector
-      var num_inputs = (10 * 10) + 4 + 4 + 1; // maze state, open directions, distance from reward
+      var num_inputs = 4 + 4 + 1; // maze state, open directions, distance from reward
       var num_actions = 4;
       var temporal_window = 1; // amount of temporal memory. 0 = agent lives in-the-moment :)
       var network_size = num_inputs*temporal_window + num_actions*temporal_window + num_inputs;
@@ -419,8 +419,8 @@ var canvas, ctx;
 // to just insert simple relu hidden layers.
       var layer_defs = [];
       layer_defs.push({type:'input', out_sx:1, out_sy:1, out_depth:network_size});
-      layer_defs.push({type:'fc', num_neurons: 100, activation:'relu'});
-      layer_defs.push({type:'fc', num_neurons: 100, activation:'relu'});
+      layer_defs.push({type:'fc', num_neurons: 200, activation:'relu'});
+      layer_defs.push({type:'fc', num_neurons: 200, activation:'relu'});
       layer_defs.push({type:'regression', num_neurons:num_actions});
 
 // options for the Temporal Difference learner that trains the above net
@@ -429,11 +429,11 @@ var canvas, ctx;
 
       var opt = {};
       opt.temporal_window = temporal_window;
-      opt.experience_size = 30000;
-      opt.start_learn_threshold = 1000;
+      opt.experience_size = 3000;
+      opt.start_learn_threshold = 100;
       opt.gamma = 0.7;
-      opt.learning_steps_total = 200000;
-      opt.learning_steps_burnin = 3000;
+      opt.learning_steps_total = 2000;
+      opt.learning_steps_burnin = 300;
       opt.epsilon_min = 0.05;
       opt.epsilon_test_time = 0.05;
       opt.layer_defs = layer_defs;
@@ -479,9 +479,10 @@ var canvas, ctx;
           return p / 10;
         }.bind(this);
 
-        var input_array = new Array((10 * 10) + 4 + 4 + 1);
+        var input_array = new Array(4 + 4 + 1);
         // inputs are the maze in its current state
         var index = 0;
+        /*
         for (var y = 0;y < 10; y ++) {
           for (var x = 0;x < 10; x ++) {
             if (w.maze[y][x] !== 0) {
@@ -501,7 +502,7 @@ var canvas, ctx;
 
             index ++;
           }
-        }
+        }*/
 /*
         for (var y = 0;y < 10; y ++) {
           for (var x = 0;x < 10; x ++) {
@@ -609,11 +610,11 @@ var canvas, ctx;
 
         // TODO: Wonder if this can be trained too?
 
-        var maxWallCollideReward = 0.3;
+        var maxWallCollideReward = 0.5;
         var maxWallCollideRatioReward = 0.2
-        var maxWalkOverReward = 0.1;
+        var maxWalkOverReward = 0.2;
         var maxStepsReward = 0.2;
-        var maxDistanceReward = 0.2;
+        var maxDistanceReward = 0.3;
         var maxCloserToGoalReward = 0.2;
 
         var wallCollideReward = 0;
@@ -907,11 +908,11 @@ var canvas, ctx;
     // Tick the world
     function tick() {
       w.tick();
-      if(w.clock % 5 === 0) {
+      //if(w.clock % 5 === 0) {
         draw();
         draw_stats();
         draw_net();
-      }
+      //}
     }
     
     var simspeed = 2;
