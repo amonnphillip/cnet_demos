@@ -1,11 +1,14 @@
-# cnet_demos
-Convolution network experiments based on work done by Andrej Kapathy https://github.com/karpathy
+# cnet_demo1
+Convolution network experiments based on work done by Andrej Kapathy https://github.com/karpathy.
+
+I am interested in machine learning, and how it applies to gaming. This  demo seeks to explore conv-net training with navigation and path finding.
+
 
 ## Convolutional network experiments
 ### Installation
-You can serve this experiment from your browser on your local machine. Install [NodeJs](https://nodejs.org) and [npm](https://www.npmjs.com/). This project was set up and run in a Windows environment, but should also work in Linux.
+You can run this experiment from your browser on your local machine. Install [NodeJs](https://nodejs.org) and [npm](https://www.npmjs.com/). This project was set up and run in a Windows environment, but should also work in Linux.
 
-Open a command prompt in administrator mode then type the following to install grunt cli globally. On linux you may need to invoke the commands under sudo.
+Open a command prompt in administrator mode then type the following to install grunt cli globally. On linux you may need to invoke the commands under sudo (haven't tried it yet though :S).
 ```shell
 npm install -g grunt-cli
 ```
@@ -21,6 +24,9 @@ Now all you need to do is run the demo. The following command must be run in the
 ```shell
 grunt
 ```
+
+If you have Chrome installed Grunt should open the browser for you, and then open a browser tab for you at the correct Url. If not you can just open a browser at localhost:8000. The experiment should start in the served page and begin training.
+
 
 ### What is this?
 In this experiment we train a conv-net to navigate a maze towards a goal. To do this we provide the conv-net with an input state, which the net is trained against and provides an output. The input state contains the following:
