@@ -159,7 +159,7 @@ var canvas, ctx;
 
       var opt = {};
       opt.temporal_window = temporal_window;
-      opt.experience_size = 3000;
+      opt.experience_size = 30000;
       opt.start_learn_threshold = 100;
       opt.gamma = 0.7;
       opt.learning_steps_total = 2000;
