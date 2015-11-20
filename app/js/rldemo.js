@@ -9,82 +9,36 @@ var canvas, ctx;
     Vec.prototype = {
       
       // utilities
-      dist_from: function(v) { return Math.sqrt(Math.pow(this.x-v.x,2) + Math.pow(this.y-v.y,2)); },
-      length: function() { return Math.sqrt(Math.pow(this.x,2) + Math.pow(this.y,2)); },
+      dist_from: function(v) {
+        return Math.sqrt(Math.pow(this.x-v.x,2) + Math.pow(this.y-v.y,2));
+      },
+      length: function() {
+        return Math.sqrt(Math.pow(this.x,2) + Math.pow(this.y,2));
+      },
       
       // new vector returning operations
-      add: function(v) { return new Vec(this.x + v.x, this.y + v.y); },
-      sub: function(v) { return new Vec(this.x - v.x, this.y - v.y); },
+      add: function(v) {
+        return new Vec(this.x + v.x, this.y + v.y);
+      },
+      sub: function(v) {
+        return new Vec(this.x - v.x, this.y - v.y);
+      },
       rotate: function(a) {  // CLOCKWISE
         return new Vec(this.x * Math.cos(a) + this.y * Math.sin(a),
                        -this.x * Math.sin(a) + this.y * Math.cos(a));
       },
       
       // in place operations
-      scale: function(s) { this.x *= s; this.y *= s; },
-      normalize: function() { var d = this.length(); this.scale(1.0/d); }
-    }
-    
-    // line intersection helper function: does line segment (p1,p2) intersect segment (p3,p4) ?
-    var line_intersect = function(p1,p2,p3,p4) {
-      var denom = (p4.y-p3.y)*(p2.x-p1.x)-(p4.x-p3.x)*(p2.y-p1.y);
-      if(denom===0.0) { return false; } // parallel lines
-      var ua = ((p4.x-p3.x)*(p1.y-p3.y)-(p4.y-p3.y)*(p1.x-p3.x))/denom;
-      var ub = ((p2.x-p1.x)*(p1.y-p3.y)-(p2.y-p1.y)*(p1.x-p3.x))/denom;
-      if(ua>0.0&&ua<1.0&&ub>0.0&&ub<1.0) {
-        var up = new Vec(p1.x+ua*(p2.x-p1.x), p1.y+ua*(p2.y-p1.y));
-        return {ua:ua, ub:ub, up:up}; // up is intersection point
+      scale: function(s) {
+        this.x *= s; this.y *= s;
+      },
+      normalize: function() {
+        var d = this.length(); this.scale(1.0/d);
       }
-      return false;
     }
-    
-    var line_point_intersect = function(p1,p2,p0,rad) {
-      var v = new Vec(p2.y-p1.y,-(p2.x-p1.x)); // perpendicular vector
-      var d = Math.abs((p2.x-p1.x)*(p1.y-p0.y)-(p1.x-p0.x)*(p2.y-p1.y));
-      d = d / v.length();
-      if(d > rad) { return false; }
-      
-      v.normalize();
-      v.scale(d);
-      var up = p0.add(v);
-      if(Math.abs(p2.x-p1.x)>Math.abs(p2.y-p1.y)) {
-        var ua = (up.x - p1.x) / (p2.x - p1.x);
-      } else {
-        var ua = (up.y - p1.y) / (p2.y - p1.y);
-      }
-      if(ua>0.0&&ua<1.0) {
-        return {ua:ua, up:up};
-      }
-      return false;
-    }
-    
-    // Wall is made up of two points
-    var Wall = function(p1, p2) {
-      this.p1 = p1;
-      this.p2 = p2;
-    }
-    
-    // World object contains many agents and walls and food and stuff
-    var util_add_box = function(lst, x, y, w, h) {
-      lst.push(new Wall(new Vec(x,y), new Vec(x+w,y)));
-      lst.push(new Wall(new Vec(x+w,y), new Vec(x+w,y+h)));
-      lst.push(new Wall(new Vec(x+w,y+h), new Vec(x,y+h)));
-      lst.push(new Wall(new Vec(x,y+h), new Vec(x,y)));
-    }
-    
-    // item is circle thing on the floor that agent can interact with (see or eat, etc)
-    var Item = function(x, y, type) {
-      this.p = new Vec(x, y); // position
-      this.type = type;
-      this.rad = 10; // default radius
-      this.age = 0;
-      this.cleanup_ = false;
-    }
-    
+
     var World = function() {
-      this.agents = [];
-      this.W = canvas.width;
-      this.H = canvas.height;
+      this.agent = undefined;
       
       this.clock = 0;
 
@@ -116,265 +70,60 @@ var canvas, ctx;
         x: 1,
         y: 1
       };
-
-
-/*
-      // set up walls in the world
-      this.walls = []; 
-      var pad = 10;
-      util_add_box(this.walls, pad, pad, this.W-pad*2, this.H-pad*2);
-      util_add_box(this.walls, 100, 100, 200, 300); // inner walls
-      this.walls.pop();
-      util_add_box(this.walls, 400, 100, 200, 300);
-      this.walls.pop();
-      
-      // set up food and poison
-      this.items = []
-      for(var k=0;k<30;k++) {
-        var x = convnetjs.randf(20, this.W-20);
-        var y = convnetjs.randf(20, this.H-20);
-        var t = convnetjs.randi(1, 3); // food or poison (1 and 2)
-        var it = new Item(x, y, t);
-        this.items.push(it);
-      }
-      */
     }
     
     World.prototype = {
-      /*
-      // helper function to get closest colliding walls/items
-      stuff_collide_: function(p1, p2, check_walls, check_items) {
-        var minres = false;
-        
-        // collide with walls
-        if(check_walls) {
-          for(var i=0,n=this.walls.length;i<n;i++) {
-            var wall = this.walls[i];
-            var res = line_intersect(p1, p2, wall.p1, wall.p2);
-            if(res) {
-              res.type = 0; // 0 is wall
-              if(!minres) { minres=res; }
-              else {
-                // check if its closer
-                if(res.ua < minres.ua) {
-                  // if yes replace it
-                  minres = res;
-                }
-              }
-            }
-          }
-        }
-        
-        // collide with items
-        if(check_items) {
-          for(var i=0,n=this.items.length;i<n;i++) {
-            var it = this.items[i];
-            var res = line_point_intersect(p1, p2, it.p, it.rad);
-            if(res) {
-              res.type = it.type; // store type of item
-              if(!minres) { minres=res; }
-              else { if(res.ua < minres.ua) { minres = res; }
-              }
-            }
-          }
-        }
-        
-        return minres;
-      },
-      */
       tick: function() {
         // tick the environment
         this.clock++;
 
-        // let the agents behave in the world based on their input
-        for(var i=0,n=this.agents.length;i<n;i++) {
-          this.agents[i].forward();
-        }
+        // let the agent behaves in the world based on their input
+        this.agent.forward();
 
         // Inc steps
-        for(var i=0,n=this.agents.length;i<n;i++) {
-          this.agents[i].steps ++;
-        }
+        this.agent.steps ++;
 
         // move agent(s)
-        for(var i=0,n=this.agents.length;i<n;i++) {
-          if (w.maze[this.agents[i].p.y + this.agents[i].action[1]][this.agents[i].p.x + this.agents[i].action[0]] === 0) {
-            this.agents[i].p.x += this.agents[i].action[0];
-            this.agents[i].p.y += this.agents[i].action[1];
-            this.agents[i].pathMap[this.agents[i].p.y][this.agents[i].p.x] ++;
-          }
+        if (w.maze[this.agent.p.y + this.agent.action[1]][this.agent.p.x + this.agent.action[0]] === 0) {
+          this.agent.p.x += this.agent.action[0];
+          this.agent.p.y += this.agent.action[1];
+          this.agent.pathMap[this.agent.p.y][this.agent.p.x] ++;
         }
 
-        // agents are given the opportunity to learn based on feedback of their action on environment
-        // TODO: Need time based feedback... MDP
-        for(var i=0,n=this.agents.length;i<n;i++) {
-          this.agents[i].backward();
-        }
+        // agent is given the opportunity to learn based on feedback of their action on environment
+        this.agent.backward();
 
-        // Check if the agent(s) have reached the goal and reset it
-        for(var i=0,n=this.agents.length;i<n;i++) {
-          if (this.agents[i].p.x === w.maze.goal.x &&
-            this.agents[i].p.y === w.maze.goal.y) {
+        // Check if the agent has reached the goal and reset it
+        if (this.agent.p.x === w.maze.goal.x &&
+          this.agent.p.y === w.maze.goal.y) {
 
-            console.log('Hit goal:');
-            console.log('steps: ' + this.agents[i].steps + ' wall hits: ' + this.agents[i].wallRuninsCount + ' oversteps: ' + this.agents[i].walkBackCount);
+          console.log('Hit goal:');
+          console.log('steps: ' + this.agent.steps + ' wall hits: ' + this.agent.wallRuninsCount + ' oversteps: ' + this.agent.walkBackCount);
 
-            this.agents[i].p.x = w.maze.start.x;
-            this.agents[i].p.y = w.maze.start.y;
-            this.agents[i].steps = 0;
-            this.agents[i].wallRuninsCount = 0;
-            this.agents[i].walkBackCount = 0;
+          this.agent.p.x = w.maze.start.x;
+          this.agent.p.y = w.maze.start.y;
+          this.agent.steps = 0;
+          this.agent.wallRuninsCount = 0;
+          this.agent.walkBackCount = 0;
 
-            this.agents[i].wallCollideReward = 0;
-            this.agents[i].wallOverReward = 0;
-            this.agents[i].stepsReward = 0;
-            this.agents[i].distanceReward = 0;
-          }
+          this.agent.wallCollideReward = 0;
+          this.agent.wallOverReward = 0;
+          this.agent.stepsReward = 0;
+          this.agent.distanceReward = 0;
         }
-
-        /*
-        // fix input to all agents based on environment
-        // process eyes
-        this.collpoints = [];
-        for(var i=0,n=this.agents.length;i<n;i++) {
-          var a = this.agents[i];
-          for(var ei=0,ne=a.eyes.length;ei<ne;ei++) {
-            var e = a.eyes[ei];
-            // we have a line from p to p->eyep
-            var eyep = new Vec(a.p.x + e.max_range * Math.sin(a.angle + e.angle),
-                               a.p.y + e.max_range * Math.cos(a.angle + e.angle));
-            var res = this.stuff_collide_(a.p, eyep, true, true);
-            if(res) {
-              // eye collided with wall
-              e.sensed_proximity = res.up.dist_from(a.p);
-              e.sensed_type = res.type;
-            } else {
-              e.sensed_proximity = e.max_range;
-              e.sensed_type = -1;
-            }
-          }
-        }
-        
-        // let the agents behave in the world based on their input
-        for(var i=0,n=this.agents.length;i<n;i++) {
-          this.agents[i].forward();
-        }
-        
-        // apply outputs of agents on evironment
-        for(var i=0,n=this.agents.length;i<n;i++) {
-          var a = this.agents[i];
-          a.op = a.p; // back up old position
-          a.oangle = a.angle; // and angle
-          
-          // steer the agent according to outputs of wheel velocities
-          var v = new Vec(0, a.rad / 2.0);
-          v = v.rotate(a.angle + Math.PI/2);
-          var w1p = a.p.add(v); // positions of wheel 1 and 2
-          var w2p = a.p.sub(v);
-          var vv = a.p.sub(w2p);
-          vv = vv.rotate(-a.rot1);
-          var vv2 = a.p.sub(w1p);
-          vv2 = vv2.rotate(a.rot2);
-          var np = w2p.add(vv);
-          np.scale(0.5);
-          var np2 = w1p.add(vv2);
-          np2.scale(0.5);
-          a.p = np.add(np2);
-          
-          a.angle -= a.rot1;
-          if(a.angle<0)a.angle+=2*Math.PI;
-          a.angle += a.rot2;
-          if(a.angle>2*Math.PI)a.angle-=2*Math.PI;
-          
-          // agent is trying to move from p to op. Check walls
-          var res = this.stuff_collide_(a.op, a.p, true, false);
-          if(res) {
-            // wall collision! reset position
-            a.p = a.op;
-          }
-          
-          // handle boundary conditions
-          if(a.p.x<0)a.p.x=0;
-          if(a.p.x>this.W)a.p.x=this.W;
-          if(a.p.y<0)a.p.y=0;
-          if(a.p.y>this.H)a.p.y=this.H;
-        }
-        
-        // tick all items
-        var update_items = false;
-        for(var i=0,n=this.items.length;i<n;i++) {
-          var it = this.items[i];
-          it.age += 1;
-          
-          // see if some agent gets lunch
-          for(var j=0,m=this.agents.length;j<m;j++) {
-            var a = this.agents[j];
-            var d = a.p.dist_from(it.p);
-            if(d < it.rad + a.rad) {
-              
-              // wait lets just make sure that this isn't through a wall
-              var rescheck = this.stuff_collide_(a.p, it.p, true, false);
-              if(!rescheck) { 
-                // ding! nom nom nom
-                if(it.type === 1) a.digestion_signal += 5.0; // mmm delicious apple
-                if(it.type === 2) a.digestion_signal += -6.0; // ewww poison
-                it.cleanup_ = true;
-                update_items = true;
-                break; // break out of loop, item was consumed
-              }
-            }
-          }
-          
-          if(it.age > 5000 && this.clock % 100 === 0 && convnetjs.randf(0,1)<0.1) {
-            it.cleanup_ = true; // replace this one, has been around too long
-            update_items = true;
-          }
-        }
-        if(update_items) {
-          var nt = [];
-          for(var i=0,n=this.items.length;i<n;i++) {
-            var it = this.items[i];
-            if(!it.cleanup_) nt.push(it);
-          }
-          this.items = nt; // swap
-        }
-        if(this.items.length < 30 && this.clock % 10 === 0 && convnetjs.randf(0,1)<0.25) {
-          var newitx = convnetjs.randf(20, this.W-20);
-          var newity = convnetjs.randf(20, this.H-20);
-          var newitt = convnetjs.randi(1, 3); // food or poison (1 and 2)
-          var newit = new Item(newitx, newity, newitt);
-          this.items.push(newit);
-        }
-
-        // agents are given the opportunity to learn based on feedback of their action on environment
-        for(var i=0,n=this.agents.length;i<n;i++) {
-          this.agents[i].backward();
-        }*/
       }
-    }
-    /*
-    // Eye sensor has a maximum range and senses walls
-    var Eye = function(angle) {
-      this.angle = angle; // angle relative to agent its on
-      this.max_range = 85;
-      this.sensed_proximity = 85; // what the eye is seeing. will be set in world.tick()
-      this.sensed_type = -1; // what does the eye see?
-    }*/
-    
+  }
     // A single agent
     var Agent = function() {
     
       // positional information
       this.p = new Vec(1, 1);
       this.op = this.p; // old position
-      this.angle = 0; // direction facing
 
       this.wallRuninsCount = 0;
       this.walkBackCount = 0;
       this.steps = 0;
       this.goalDist = 0;
-      this.goalVectorx = 0;
-      this.goalVectory = 0;
       this.wallCollideReward = 0;
       this.wallOverReward = 0;
       this.stepsReward = 0;
@@ -388,27 +137,8 @@ var canvas, ctx;
       this.actions.push([-1,0]);
 
       this.pathMap;
-/*
-      this.actions.push([1,1]);
-      this.actions.push([0.8,1]);
-      this.actions.push([1,0.8]);
-      this.actions.push([0.5,0]);
-      this.actions.push([0,0.5]);
 
-      */
-      // properties
-      this.rad = 10;
-      //this.eyes = [];
-      //for(var k=0;k<9;k++) { this.eyes.push(new Eye((k-3)*0.25)); }
-      
-      // braaain
-      //this.brain = new deepqlearn.Brain(this.eyes.length * 3, this.actions.length);
-      //var spec = document.getElementById('qspec').value;
-     // eval(spec);
-
-
-      //var num_inputs = (10 * 10) + 4 + 4 + 2 + 1 + 2; // maze, open directions, positions agent has been to, agent position, distance from reward, reward vector
-      var num_inputs = 4 + 4 + 1; // maze state, open directions, distance from reward
+      var num_inputs = 4 + 4 + 1; //open directions, distance from reward etc
       var num_actions = 4;
       var temporal_window = 1; // amount of temporal memory. 0 = agent lives in-the-moment :)
       var network_size = num_inputs*temporal_window + num_actions*temporal_window + num_inputs;
@@ -439,17 +169,7 @@ var canvas, ctx;
       opt.layer_defs = layer_defs;
       opt.tdtrainer_options = tdtrainer_options;
 
-
-      this.brain = new deepqlearn.Brain(num_inputs, num_actions, opt); // woohoo;
-      
-      this.reward_bonus = 0.0;
-      this.digestion_signal = 0.0;
-      
-      // outputs on world
-      this.rot1 = 0.0; // rotation speed of 1st wheel
-      this.rot2 = 0.0; // rotation speed of 2nd wheel
-      
-      this.prevactionix = -1;
+      this.brain = new deepqlearn.Brain(num_inputs, num_actions, opt);
     }
     Agent.prototype = {
       createPathMap: function() {
@@ -480,45 +200,7 @@ var canvas, ctx;
         }.bind(this);
 
         var input_array = new Array(4 + 4 + 1);
-        // inputs are the maze in its current state
         var index = 0;
-        /*
-        for (var y = 0;y < 10; y ++) {
-          for (var x = 0;x < 10; x ++) {
-            if (w.maze[y][x] !== 0) {
-              input_array[index] = w.maze[y][x];
-            } else {
-              var p = this.pathMap[y][x];
-              if (p > 10) {
-                p = 8;
-              }
-
-              input_array[index] = calcPathMapResistance(x, y);
-            }
-
-            if (y === this.p.y && x === this.p.x) {
-              input_array[index] = 1;
-            }
-
-            index ++;
-          }
-        }*/
-/*
-        for (var y = 0;y < 10; y ++) {
-          for (var x = 0;x < 10; x ++) {
-            if (y === this.p.y && x === this.p.x) {
-              input_array[index] = 1;
-            }
-            index ++;
-          }
-        }*/
-/*
-        for (var y = 0;y < 10; y ++) {
-          for (var x = 0;x < 10; x ++) {
-            input_array[index] = this.pathMap[y][x];
-            index ++;
-          }
-        }*/
 
         // directions that are clear
         input_array[index] = 1;
@@ -545,71 +227,22 @@ var canvas, ctx;
         input_array[index + 2] = calcPathMapResistance(this.p.y, this.p.x + 1);
         input_array[index + 3] = calcPathMapResistance(this.p.y, this.p.x - 1);
         index += 4;
-/*
-        // agent position
-        input_array[index] = this.p.x / 10;
-        index ++;
-        input_array[index] = this.p.y / 10;
-        index ++;
-*/
+
         // how close the agent is to the goal
         var v = new Vec(this.p.x, this.p.y);
         var dist = v.dist_from(new Vec(w.maze.goal.x, w.maze.goal.y));
         input_array[index] = dist / 10;
         index ++;
-        w.agents[0].goalDist = dist / 10;
-
-        /*
-        // goal vector
-        var v = new Vec(this.p.x, this.p.y);
-        v = v.sub(new Vec(w.maze.goal.x, w.maze.goal.y));
-        v.normalize();
-        input_array[index] = (1 + v.x) / 2;
-        index ++;
-        input_array[index] = (1 + v.y) / 2;
-        index ++;
-
-        w.agents[0].goalVectorx = (1 + v.x) / 2;
-        w.agents[0].goalVectory = (1 + v.y) / 2;
-*/
-
-/*
-        // create input to brain
-        var num_eyes = this.eyes.length;
-        var input_array = new Array(num_eyes * 3);
-        for(var i=0;i<num_eyes;i++) {
-          var e = this.eyes[i];
-          input_array[i*3] = 1.0;
-          input_array[i*3+1] = 1.0;
-          input_array[i*3+2] = 1.0;
-          if(e.sensed_type !== -1) {
-            // sensed_type is 0 for wall, 1 for food and 2 for poison.
-            // lets do a 1-of-k encoding into the input array
-            input_array[i*3 + e.sensed_type] = e.sensed_proximity/e.max_range; // normalize to [0,1]
-          }
-        }*/
+        w.agent.goalDist = dist / 10;
         
         // get action from brain
         var actionix = this.brain.forward(input_array);
         this.action = this.actions[actionix];
-        this.actionix = actionix; //back this up
-
-
-        /*
-        // demultiplex into behavior variables
-        this.rot1 = action[0]*1;
-        this.rot2 = action[1]*1;
-*/
       },
       backward: function() {
-        // in backward pass agent learns.
+        // in backward pass agent learns
 
-        // TODO: This is the state value function!!
-
-        // TODO: Need to display the result of this value in UI
-
-        // TODO: Wonder if this can be trained too?
-
+        // reward weights
         var maxWallCollideReward = 0.5;
         var maxWallCollideRatioReward = 0.2
         var maxWalkOverReward = 0.2;
@@ -617,6 +250,7 @@ var canvas, ctx;
         var maxDistanceReward = 0.3;
         var maxCloserToGoalReward = 0.2;
 
+        // reward totals
         var wallCollideReward = 0;
         var wallCollideRatioReward = 0;
         var wallOverReward = 0;
@@ -624,11 +258,10 @@ var canvas, ctx;
         var distanceReward = 0;
         var closerToGoal = 0;
 
-        //
-
+        // calculate number of steps reward
         var v = new Vec(this.p.x, this.p.y);
         var dist = v.dist_from(new Vec(w.maze.goal.x, w.maze.goal.y));
-        var distanceReward = Math.abs((dist/10) - 1) * maxDistanceReward;
+        distanceReward = Math.abs((dist/10) - 1) * maxDistanceReward;
 
         var minStepsForMaze = 20;
         var maxSteps = 200;
@@ -641,65 +274,38 @@ var canvas, ctx;
           }
         }
 
-        // punish for trying to walk into walls
+        // calculate walking into walls reward and punish for trying to walk into walls
         if (w.maze[this.p.y + this.action[1]][this.p.x + this.action[0]] === 1) {
           wallCollideReward = 0;
-          w.agents[0].wallRuninsCount ++;
+          w.agent.wallRuninsCount ++;
         } else {
           wallCollideReward = maxWallCollideReward;
         }
 
-        if (w.agents[0].wallRuninsCount === 0) {
+        if (w.agent.wallRuninsCount === 0) {
           wallCollideRatioReward = maxWallCollideRatioReward;
         } else {
-          wallCollideRatioReward = maxWallCollideRatioReward / w.agents[0].wallRuninsCount;
+          wallCollideRatioReward = maxWallCollideRatioReward / w.agent.wallRuninsCount;
         }
 
-        // punish for trying walk over previous path
+        // calculate walking over parts of the maze the agent has been to before and punish for trying walk over previous path
         if (this.pathMap[this.p.y + this.action[1]][this.p.x + this.action[0]] > 0) {
           wallOverReward = 0;
-          w.agents[0].walkBackCount ++;
+          w.agent.walkBackCount ++;
         } else {
           wallOverReward = maxWalkOverReward;
         }
 
         // reward for being closer to the goal
-        if (w.agents[0].distanceReward < distanceReward) {
+        if (w.agent.distanceReward < distanceReward) {
           closerToGoal = maxCloserToGoalReward;
         }
-
 
         // reward for hitting goal
         if (this.p.x === w.maze.goal.x &&
           this.p.y === w.maze.goal.y) {
-          //reward = 1;
           this.createPathMap();
-
-          // TODO: Need to do somthing with the learning here
         }
-
-        /*
-        // compute reward 
-        var proximity_reward = 0.0;
-        var num_eyes = this.eyes.length;
-        for(var i=0;i<num_eyes;i++) {
-          var e = this.eyes[i];
-          // agents dont like to see walls, especially up close
-          proximity_reward += e.sensed_type === 0 ? e.sensed_proximity/e.max_range : 1.0;
-        }
-        proximity_reward = proximity_reward/num_eyes;
-        proximity_reward = Math.min(1.0, proximity_reward * 2);
-        
-        // agents like to go straight forward
-        var forward_reward = 0.0;
-        if(this.actionix === 0 && proximity_reward > 0.75) forward_reward = 0.1 * proximity_reward;
-        
-        // agents like to eat good things
-        var digestion_reward = this.digestion_signal;
-        this.digestion_signal = 0.0;
-        
-        var reward = proximity_reward + forward_reward + digestion_reward;
-        */
 
         var reward = wallCollideReward + wallOverReward + stepsReward + distanceReward + wallCollideRatioReward + closerToGoal;
 
@@ -707,11 +313,11 @@ var canvas, ctx;
           reward = 1;
         }
 
-        w.agents[0].wallCollideReward = wallCollideReward;
-        w.agents[0].wallOverReward = wallOverReward;
-        w.agents[0].stepsReward = stepsReward;
-        w.agents[0].distanceReward = distanceReward;
-        w.agents[0].reward = reward;
+        w.agent.wallCollideReward = wallCollideReward;
+        w.agent.wallOverReward = wallOverReward;
+        w.agent.stepsReward = stepsReward;
+        w.agent.distanceReward = distanceReward;
+        w.agent.reward = reward;
 
         // pass to brain for learning
         this.brain.backward(reward);
@@ -734,10 +340,10 @@ var canvas, ctx;
       var H = canvas.height;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      var layerDisplayWidth = w.agents[0].brain.value_net.layers / (canvas.width - 20);
+      var layerDisplayWidth = w.agent.brain.value_net.layers / (canvas.width - 20);
 
 
-      var L = w.agents[0].brain.value_net.layers;
+      var L = w.agent.brain.value_net.layers;
       //var dx = (W - layerDisplayWidth)/L.length;
       var x = 10;
       var y = 40;
@@ -774,7 +380,7 @@ var canvas, ctx;
       var W = canvas.width;
       var H = canvas.height;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      var a = w.agents[0];
+      var a = w.agent;
       var b = a.brain;
       var netin = b.last_input_array;
       ctx.strokeStyle = "rgb(0,0,0)";
@@ -809,8 +415,8 @@ var canvas, ctx;
             ctx.fillRect(x * bw, y * bh,  bw, bh);
           }
 
-          if (w.agents[0].pathMap[y][x] > 1) {
-            var col = 255 - (w.agents[0].pathMap[y][x] * 3);
+          if (w.agent.pathMap[y][x] > 1) {
+            var col = 255 - (w.agent.pathMap[y][x] * 3);
             if (col > 128) {
               col = 128
             };
@@ -822,7 +428,7 @@ var canvas, ctx;
       }
 
       ctx.fillStyle="#FF0000";
-      ctx.fillRect(w.agents[0].p.x * bw, w.agents[0].p.y * bh, bw, bh);
+      ctx.fillRect(w.agent.p.x * bw, w.agent.p.y * bh, bw, bh);
 
       ctx.fillStyle="#006600";
       ctx.fillRect(w.maze.goal.x * bw, w.maze.goal.y * bh, bw, bh);
@@ -830,141 +436,31 @@ var canvas, ctx;
       ctx_metrics.clearRect(0, 0, canvas_metrics.width, canvas_metrics.height);
       ctx_metrics.font="12px Verdana";
       ctx_metrics.fillStyle = "rgb(0,0,0)";
-      ctx_metrics.fillText("steps = " + w.agents[0].steps, 10, 14);
-      ctx_metrics.fillText("wall hits = " + w.agents[0].wallRuninsCount, 10, 24);
-      ctx_metrics.fillText("back walks = " + w.agents[0].walkBackCount, 10, 34);
-      ctx_metrics.fillText("dist = " + w.agents[0].goalDist, 150, 14);
-      ctx_metrics.fillText("vectorx = " + w.agents[0].goalVectorx, 150, 24);
-      ctx_metrics.fillText("vectory = " + w.agents[0].goalVectory, 150, 34);
+      ctx_metrics.fillText("steps = " + w.agent.steps, 10, 14);
+      ctx_metrics.fillText("wall hits = " + w.agent.wallRuninsCount, 10, 24);
+      ctx_metrics.fillText("back walks = " + w.agent.walkBackCount, 10, 34);
+      ctx_metrics.fillText("dist = " + w.agent.goalDist, 150, 14);
 
-      ctx_metrics.fillText("rewards = " + w.agents[0].reward, 10, 44);
-      ctx_metrics.fillText("cl: " + w.agents[0].wallCollideReward + ' wo: ' + w.agents[0].wallOverReward + 'st: ' + w.agents[0].stepsReward + ' ds: ' +  w.agents[0].distanceReward, 10, 54);
+      ctx_metrics.fillText("rewards = " + w.agent.reward, 10, 44);
+      ctx_metrics.fillText("cl: " + w.agent.wallCollideReward + ' wo: ' + w.agent.wallOverReward + 'st: ' + w.agent.stepsReward + ' ds: ' +  w.agent.distanceReward, 10, 54);
 
-      w.agents[0].brain.visSelf(document.getElementById('brain_info_div'));
-
-      /*
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.lineWidth = 1;
-            var agents = w.agents;
-
-            // draw walls in environment
-            ctx.strokeStyle = "rgb(0,0,0)";
-            ctx.beginPath();
-            for(var i=0,n=w.walls.length;i<n;i++) {
-              var q = w.walls[i];
-              ctx.moveTo(q.p1.x, q.p1.y);
-              ctx.lineTo(q.p2.x, q.p2.y);
-            }
-            ctx.stroke();
-
-            // draw agents
-            // color agent based on reward it is experiencing at the moment
-            var r = Math.floor(agents[0].brain.latest_reward * 200);
-            if(r>255)r=255;if(r<0)r=0;
-            ctx.fillStyle = "rgb(" + r + ", 150, 150)";
-            ctx.strokeStyle = "rgb(0,0,0)";
-            for(var i=0,n=agents.length;i<n;i++) {
-              var a = agents[i];
-
-              // draw agents body
-              ctx.beginPath();
-              ctx.arc(a.op.x, a.op.y, a.rad, 0, Math.PI*2, true);
-              ctx.fill();
-              ctx.stroke();
-
-              // draw agents sight
-              for(var ei=0,ne=a.eyes.length;ei<ne;ei++) {
-                var e = a.eyes[ei];
-                var sr = e.sensed_proximity;
-                if(e.sensed_type === -1 || e.sensed_type === 0) {
-                  ctx.strokeStyle = "rgb(0,0,0)"; // wall or nothing
-                }
-                if(e.sensed_type === 1) { ctx.strokeStyle = "rgb(255,150,150)"; } // apples
-                if(e.sensed_type === 2) { ctx.strokeStyle = "rgb(150,255,150)"; } // poison
-                ctx.beginPath();
-                ctx.moveTo(a.op.x, a.op.y);
-                ctx.lineTo(a.op.x + sr * Math.sin(a.oangle + e.angle),
-                           a.op.y + sr * Math.cos(a.oangle + e.angle));
-                ctx.stroke();
-              }
-            }
-
-            // draw items
-            ctx.strokeStyle = "rgb(0,0,0)";
-            for(var i=0,n=w.items.length;i<n;i++) {
-              var it = w.items[i];
-              if(it.type === 1) ctx.fillStyle = "rgb(255, 150, 150)";
-              if(it.type === 2) ctx.fillStyle = "rgb(150, 255, 150)";
-              ctx.beginPath();
-              ctx.arc(it.p.x, it.p.y, it.rad, 0, Math.PI*2, true);
-              ctx.fill();
-              ctx.stroke();
-            }
-
-            w.agents[0].brain.visSelf(document.getElementById('brain_info_div'));
-            */
+      w.agent.brain.visSelf(document.getElementById('brain_info_div'));
     }
     
     // Tick the world
     function tick() {
       w.tick();
-      //if(w.clock % 5 === 0) {
-        draw();
-        draw_stats();
-        draw_net();
-      //}
+      draw();
+      draw_stats();
+      draw_net();
     }
     
     var simspeed = 2;
-    function goveryfast() {
-      window.clearInterval(current_interval_id);
-      current_interval_id = setInterval(tick, 0);
-      skipdraw = true;
-      simspeed = 3;
-    }
     function gofast() {
       window.clearInterval(current_interval_id);
       current_interval_id = setInterval(tick, 0);
       skipdraw = false;
       simspeed = 2;
-    }
-    function gonormal() {
-      window.clearInterval(current_interval_id);
-      current_interval_id = setInterval(tick, 30);
-      skipdraw = false;
-      simspeed = 1;
-    }
-    function goslow() {
-      window.clearInterval(current_interval_id);
-      current_interval_id = setInterval(tick, 200);
-      skipdraw = false;
-      simspeed = 0;
-    }
-    
-    function savenet() {
-      var j = w.agents[0].brain.value_net.toJSON();
-      var t = JSON.stringify(j);
-      document.getElementById('tt').value = t;
-    }
-    
-    function loadnet() {
-      var t = document.getElementById('tt').value;
-      var j = JSON.parse(t);
-      w.agents[0].brain.value_net.fromJSON(j);
-      stoplearn(); // also stop learning
-      gonormal();
-    }
-    
-    function startlearn() {
-      w.agents[0].brain.learning = true;
-    }
-    function stoplearn() {
-      w.agents[0].brain.learning = false;
-    }
-    
-    function reload() {
-      w.agents = [new Agent()]; // this should simply work. I think... ;\
-      reward_graph = new cnnvis.Graph(); // reinit
     }
     
     var w; // global world object
@@ -977,7 +473,7 @@ var canvas, ctx;
       ctx_metrics = canvas_metrics.getContext("2d");
 
       w = new World();
-      w.agents = [new Agent()];
+      w.agent = new Agent();
       
       gofast();
     }
